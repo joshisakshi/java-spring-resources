@@ -679,7 +679,7 @@ The responsibility for creating them moves from the application to the IoC conta
 
 # Real Project Example
 
-Imagine you're working on BitGo's staking onboarding service.
+Imagine you're working on some staking onboarding service.
 
 ```
 ChainController

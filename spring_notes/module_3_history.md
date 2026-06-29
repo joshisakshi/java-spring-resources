@@ -648,8 +648,6 @@ Correct Answer:
 
 # Real Project Perspective
 
-Imagine joining a company like BitGo.
-
 When you clone a service and run:
 
 ```bash
