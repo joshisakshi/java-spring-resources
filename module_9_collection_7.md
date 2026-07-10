@@ -1,604 +1,874 @@
-# Module 9 - Collections (Part 6)
+# Module 9 - Collections (Part 7)
 
-# Hashtable & ConcurrentHashMap Deep Dive
+# Comparable & Comparator Deep Dive
 
-> **Goal:** Understand why HashMap is not thread-safe, how Hashtable and ConcurrentHashMap solve concurrency problems, and when each should be used in real applications.
+> **Goal:** Master sorting in Java by understanding Comparable and Comparator, their internal workings, natural vs custom ordering, Java 8 enhancements, and how they are used in real-world Spring Boot applications.
 
 ---
 
 # Table of Contents
 
-1. Why Thread Safety Matters
-2. Why HashMap is Not Thread-Safe
-3. Race Condition
-4. Hashtable
-5. Collections.synchronizedMap()
-6. ConcurrentHashMap
-7. Internal Working (Java 7 vs Java 8)
-8. CAS (Compare-And-Swap)
-9. HashMap vs Hashtable vs ConcurrentHashMap
-10. Spring Boot Usage
-11. Best Practices
-12. Common Mistakes
-13. Interview Questions
-14. Exercises
-15. Revision Sheet
+1. Why Do We Need Sorting?
+2. Comparable Interface
+3. Internal Working of Comparable
+4. Comparator Interface
+5. Internal Working of Comparator
+6. Comparable vs Comparator
+7. Natural Ordering
+8. Custom Ordering
+9. Multiple Field Sorting
+10. Java 8 Comparator Enhancements
+11. TreeSet & TreeMap Ordering
+12. Collections.sort() vs List.sort()
+13. TimSort
+14. Spring Boot Usage
+15. Best Practices
+16. Common Mistakes
+17. Interview Questions
+18. Exercises
+19. Revision Sheet
 
 ---
 
-# 1. Why Thread Safety Matters
+# 1. Why Do We Need Sorting?
 
-Suppose two threads access the same HashMap.
+Almost every application needs sorting.
 
-```java
-Map<Integer, String> map = new HashMap<>();
-```
+Examples:
 
-Thread A
+- Sort employees by salary
+- Sort products by price
+- Sort students by marks
+- Sort orders by creation date
+- Sort users alphabetically
 
-```java
-map.put(1, "Alice");
-```
-
-Thread B
-
-```java
-map.put(2, "Bob");
-```
-
-Both threads modify the same data simultaneously.
-
-Without proper synchronization, the map can become inconsistent.
-
----
-
-# What is a Race Condition?
-
-A race condition occurs when:
-
-- Multiple threads access shared data.
-- At least one thread modifies it.
-- The final result depends on the timing of execution.
-
-Example:
-
-```java
-count = 0;
-```
-
-Thread A
-
-```java
-count++;
-```
-
-Thread B
-
-```java
-count++;
-```
-
-Expected:
+Suppose we have:
 
 ```text
-2
+Charlie
+Alice
+Bob
 ```
 
-Possible result:
+Desired output:
 
 ```text
-1
+Alice
+Bob
+Charlie
 ```
 
-because both threads read the old value before either writes the new one.
+Java provides two mechanisms for sorting:
+
+1. Comparable
+2. Comparator
 
 ---
 
-# 2. Why HashMap is Not Thread-Safe
+# 2. Comparable Interface
 
-HashMap performs no synchronization.
-
-Example:
+Package:
 
 ```java
-Map<Integer,String> map = new HashMap<>();
+java.lang.Comparable<T>
 ```
 
-Multiple threads can execute:
+Comparable defines the **natural ordering** of objects.
+
+Method:
 
 ```java
-put()
-
-remove()
-
-resize()
+int compareTo(T obj);
 ```
 
-at the same time.
-
-Possible issues:
-
-- Lost updates
-- Corrupted internal structure
-- Infinite loops (older JDKs during resize)
-- Incorrect reads
+When a class implements Comparable, it decides how its own objects should be sorted.
 
 ---
 
-# Example
+## Example
 
 ```java
-Thread 1
+class Student implements Comparable<Student> {
 
-map.put(1, "A");
+    int marks;
 
-Thread 2
+    Student(int marks) {
+        this.marks = marks;
+    }
 
-map.put(2, "B");
-```
-
-Both threads may try to modify the same bucket simultaneously.
-
-Result is unpredictable.
-
----
-
-# 3. Hashtable
-
-Before ConcurrentHashMap, Java provided:
-
-```java
-Hashtable<K,V>
-```
-
-Characteristics:
-
-- Thread-safe
-- Synchronized
-- Slower
-- Legacy class
-- Does not allow null keys or null values
-
-Example
-
-```java
-Map<Integer,String> table =
-        new Hashtable<>();
-```
-
----
-
-# How Hashtable Achieves Thread Safety
-
-Every public method is synchronized.
-
-Example (simplified):
-
-```java
-public synchronized V put(K key, V value) {
-
-    ...
-
+    @Override
+    public int compareTo(Student other) {
+        return this.marks - other.marks;
+    }
 }
 ```
 
-Only one thread can execute `put()` on the same Hashtable instance at a time.
-
----
-
-# Problem with Hashtable
-
-Suppose:
-
-10 threads
-
-perform
-
-```text
-get()
-```
-
-Only one thread proceeds.
-
-The other nine wait.
-
-Even reads block each other.
-
-This creates unnecessary contention and poor scalability.
-
----
-
-# 4. Collections.synchronizedMap()
-
-Java also provides a synchronized wrapper.
+Usage
 
 ```java
-Map<Integer,String> map =
-    Collections.synchronizedMap(new HashMap<>());
+List<Student> students = new ArrayList<>();
+
+students.add(new Student(90));
+students.add(new Student(70));
+students.add(new Student(80));
+
+Collections.sort(students);
 ```
 
-Internally, every operation acquires a single lock.
+Output
 
-Advantages:
-
-- Easy to create
-- Thread-safe
-
-Disadvantages:
-
-- Same bottleneck as Hashtable
-- One global lock
+```text
+70
+80
+90
+```
 
 ---
 
-# 5. ConcurrentHashMap
+# compareTo() Return Values
 
-Introduced to solve Hashtable's performance problem.
+```text
+this.compareTo(other)
+
+< 0   → Current object comes before other
+
+= 0   → Both objects are equal
+
+> 0   → Current object comes after other
+```
 
 Example
 
 ```java
-Map<Integer,String> map =
-        new ConcurrentHashMap<>();
+10.compareTo(20)
 ```
 
-Characteristics:
-
-- Thread-safe
-- High performance
-- Better concurrency
-- No global lock
-- Does not allow null keys or null values
-
----
-
-# Why is ConcurrentHashMap Faster?
-
-Instead of locking the whole map:
+Result
 
 ```text
-Hashtable
-
-Entire Map Locked
+-1
 ```
 
-ConcurrentHashMap locks only the required portion during updates.
-
-Multiple threads can operate on different buckets simultaneously.
-
----
-
-# Java 7 Internal Working
-
-Java 7 used:
-
-```text
-Segments
-```
-
-Example:
-
-```text
-Map
-
-↓
-
-Segment 1
-
-Segment 2
-
-Segment 3
-
-Segment 4
-```
-
-Each segment had its own lock.
-
-Two threads could update different segments concurrently.
-
----
-
-# Java 8 Improvement
-
-Segments were removed.
-
-Now locking happens at the bucket (bin) level.
-
-Conceptually:
-
-```text
-Bucket 0
-
-Bucket 1
-
-Bucket 2
-
-Bucket 3
-```
-
-If Thread A updates Bucket 1 and Thread B updates Bucket 3, they can proceed simultaneously.
-
-This greatly improves throughput.
-
----
-
-# 6. CAS (Compare-And-Swap)
-
-ConcurrentHashMap also uses a lock-free technique called CAS.
-
-CAS is an atomic CPU operation.
-
-Idea:
-
-```text
-Current Value == Expected Value?
-
-↓
-
-Yes
-
-↓
-
-Update
-
-↓
-
-No
-
-↓
-
-Retry
-```
-
-This avoids locking for many operations.
-
-Java implements CAS using classes from `java.util.concurrent.atomic` and low-level JVM support.
-
----
-
-# Example (Conceptual)
-
-Current value:
+Meaning:
 
 ```text
 10
-```
 
-Thread wants to change it to:
+↓
 
-```text
 20
 ```
 
-CAS checks:
+---
+
+# 3. Internal Working of Comparable
+
+When we call:
+
+```java
+Collections.sort(list);
+```
+
+Execution flow:
 
 ```text
-Is current value still 10?
+Collections.sort()
 
 ↓
 
-Yes
+List.sort()
 
 ↓
 
-Update to 20
+TimSort
+
+↓
+
+compareTo()
+
+↓
+
+Determine Order
+
+↓
+
+Sorted List
 ```
 
-If another thread already changed it:
+Notice that **TimSort never knows how to compare Student objects**.
+
+Instead, it repeatedly calls:
+
+```java
+student1.compareTo(student2);
+```
+
+This makes Comparable the object's built-in comparison logic.
+
+---
+
+# Example Execution
+
+Suppose:
 
 ```text
-Retry
+90
+
+70
+
+80
 ```
 
----
-
-# Read Operations
-
-One of the biggest advantages:
-
-Reads usually do **not** block.
-
-Multiple threads can execute:
-
-```java
-map.get(key);
-```
-
-simultaneously.
-
-This is why ConcurrentHashMap performs much better in read-heavy applications.
-
----
-
-# Null Handling
-
-HashMap
-
-```java
-map.put(null, "A");
-```
-
-Allowed.
-
-ConcurrentHashMap
-
-```java
-map.put(null, "A");
-```
-
-Throws:
+TimSort compares:
 
 ```text
-NullPointerException
+90 vs 70
+
+↓
+
+compareTo()
+
+↓
+
+Positive
+
+↓
+
+Swap
 ```
 
-Reason:
+Then
 
-`null` would make it ambiguous whether a missing value or an actual `null` value was returned during concurrent access.
+```text
+90 vs 80
+
+↓
+
+compareTo()
+
+↓
+
+Positive
+
+↓
+
+Swap
+```
+
+Finally
+
+```text
+70
+
+80
+
+90
+```
 
 ---
 
-# 7. Comparison
+# 4. Comparator Interface
 
-| Feature | HashMap | Hashtable | ConcurrentHashMap |
-|----------|----------|------------|-------------------|
-| Thread Safe | ❌ | ✅ | ✅ |
-| Null Key | ✅ One | ❌ | ❌ |
-| Null Value | ✅ Multiple | ❌ | ❌ |
-| Synchronization | None | Entire Map | Bucket/CAS |
-| Performance | Fast | Slow | Fast |
-| Recommended Today | Yes (single-threaded) | No | Yes (multi-threaded) |
-
----
-
-# 8. Spring Boot Usage
-
-ConcurrentHashMap is commonly used for:
-
-In-memory caches
+Package:
 
 ```java
-Map<Long, User> cache =
-    new ConcurrentHashMap<>();
+java.util.Comparator<T>
 ```
 
-Session storage
+Method:
 
-Feature flags
+```java
+int compare(T o1, T o2);
+```
 
-Application metadata
+Comparator defines an **external comparison strategy**.
 
-Rate limit counters
-
-Request tracking
-
-Background job status
-
-HashMap is typically fine for request-scoped objects that are not shared across threads.
+Unlike Comparable, the class itself does not need to change.
 
 ---
 
-# 9. Best Practices
+## Example
 
-✅ Use HashMap in single-threaded scenarios.
+```java
+class Student {
 
----
+    int marks;
 
-✅ Use ConcurrentHashMap for shared mutable state.
+    Student(int marks) {
+        this.marks = marks;
+    }
+}
+```
 
----
+Comparator
 
-✅ Avoid Hashtable in new applications.
+```java
+class MarksComparator
+        implements Comparator<Student> {
 
----
+    @Override
+    public int compare(Student s1,
+                       Student s2) {
 
-✅ Avoid locking the whole map unless absolutely necessary.
+        return s1.marks - s2.marks;
+    }
+}
+```
 
----
+Usage
 
-# 10. Common Mistakes
-
-❌ Assuming HashMap is thread-safe.
-
----
-
-❌ Using Hashtable in modern applications without a specific reason.
-
----
-
-❌ Expecting ConcurrentHashMap to allow null keys.
-
----
-
-❌ Iterating over a HashMap while another thread modifies it.
-
----
-
-# 11. Interview Questions
-
-### Why is HashMap not thread-safe?
+```java
+Collections.sort(students,
+                 new MarksComparator());
+```
 
 ---
 
-### What is a race condition?
+# Why Comparator?
+
+Suppose Employee has:
+
+- Name
+- Salary
+- Age
+
+Today you need:
+
+```text
+Sort by Salary
+```
+
+Tomorrow:
+
+```text
+Sort by Age
+```
+
+Next week:
+
+```text
+Sort by Name
+```
+
+Changing compareTo() every time is impossible.
+
+Comparator allows multiple sorting strategies.
 
 ---
 
-### Difference between Hashtable and HashMap?
+# 5. Internal Working of Comparator
+
+Execution
+
+```text
+Collections.sort(list, comparator)
+
+↓
+
+TimSort
+
+↓
+
+Comparator.compare()
+
+↓
+
+Return
+
+-1
+
+0
+
+1
+
+↓
+
+Sorting Completed
+```
+
+Instead of calling:
+
+```text
+compareTo()
+```
+
+TimSort now repeatedly calls:
+
+```java
+compare(o1, o2)
+```
+
+The Comparator decides the ordering.
 
 ---
 
-### Difference between Hashtable and ConcurrentHashMap?
+# Comparable vs Comparator
+
+| Comparable | Comparator |
+|------------|------------|
+| Package: java.lang | Package: java.util |
+| compareTo() | compare() |
+| Natural ordering | Custom ordering |
+| One sorting logic | Multiple sorting logics |
+| Class modified | External class/lambda |
+| Used automatically | Passed explicitly |
 
 ---
 
-### Why is ConcurrentHashMap faster?
+# Natural Ordering
+
+Natural ordering means:
+
+> "How should objects normally be sorted?"
+
+Examples
+
+String
+
+```text
+Alphabetical
+```
+
+Integer
+
+```text
+Ascending
+```
+
+LocalDate
+
+```text
+Chronological
+```
+
+These classes already implement Comparable.
+
+Example
+
+```java
+Collections.sort(names);
+```
+
+Output
+
+```text
+Alice
+
+Bob
+
+Charlie
+```
 
 ---
 
-### What was the Segment architecture in Java 7?
+# Custom Ordering
+
+Need descending marks?
+
+```java
+Comparator<Student> desc =
+    (a, b) -> b.marks - a.marks;
+
+Collections.sort(students, desc);
+```
+
+Output
+
+```text
+95
+
+90
+
+80
+
+70
+```
 
 ---
 
-### What changed in Java 8?
+# Multiple Field Sorting
+
+Suppose Employee has:
+
+```text
+Name
+
+Salary
+
+Age
+```
+
+Requirement
+
+1. Salary
+2. Age
+3. Name
+
+Comparator handles this easily.
+
+```java
+Comparator<Employee> comparator =
+    Comparator.comparing(Employee::getSalary)
+              .thenComparing(Employee::getAge)
+              .thenComparing(Employee::getName);
+```
+
+This is much cleaner than writing nested if-else statements.
 
 ---
 
-### What is CAS?
+# Java 8 Comparator Enhancements
+
+Instead of
+
+```java
+Collections.sort(list,
+    new Comparator<Employee>() {
+
+        @Override
+        public int compare(Employee a,
+                           Employee b) {
+
+            return a.getSalary() - b.getSalary();
+
+        }
+
+});
+```
+
+Use
+
+```java
+list.sort(
+    Comparator.comparing(Employee::getSalary)
+);
+```
+
+Cleaner, shorter, and easier to maintain.
 
 ---
 
-### Why doesn't ConcurrentHashMap allow null?
+# Useful Comparator Methods
+
+Ascending
+
+```java
+Comparator.comparing(Employee::getSalary)
+```
+
+Descending
+
+```java
+Comparator.comparing(Employee::getSalary)
+          .reversed()
+```
+
+Then Comparing
+
+```java
+Comparator.comparing(Employee::getSalary)
+          .thenComparing(Employee::getAge)
+```
+
+Nulls First
+
+```java
+Comparator.nullsFirst(
+    Comparator.naturalOrder()
+)
+```
+
+Nulls Last
+
+```java
+Comparator.nullsLast(
+    Comparator.naturalOrder()
+)
+```
+
+Reverse Order
+
+```java
+Comparator.reverseOrder()
+```
+
+Natural Order
+
+```java
+Comparator.naturalOrder()
+```
 
 ---
 
-### Can multiple threads call get() simultaneously?
+# TreeSet & TreeMap Ordering
 
-**Answer:** Yes, in most cases they can.
+TreeSet and TreeMap always maintain sorted order.
+
+Default
+
+```java
+TreeSet<Integer> set =
+    new TreeSet<>();
+```
+
+Ascending
+
+```text
+10
+
+20
+
+30
+```
+
+Custom
+
+```java
+TreeSet<Integer> set =
+    new TreeSet<>(Comparator.reverseOrder());
+```
+
+Output
+
+```text
+30
+
+20
+
+10
+```
+
+The comparator determines where every element is inserted.
 
 ---
 
-# 12. Exercises
+# Collections.sort() vs List.sort()
 
-1. Compare HashMap and Hashtable.
-2. Explain a race condition with an example.
-3. Compare Hashtable and ConcurrentHashMap.
-4. Explain CAS in simple words.
-5. Describe how Java 8 improved ConcurrentHashMap.
+Collections
+
+```java
+Collections.sort(list);
+```
+
+List
+
+```java
+list.sort(comparator);
+```
+
+Internally
+
+```text
+Collections.sort()
+
+↓
+
+List.sort()
+
+↓
+
+TimSort
+```
+
+Since Java 8, `Collections.sort()` delegates to `List.sort()`.
 
 ---
 
-# 13. Revision Sheet
+# TimSort
 
-## Core Concepts
+Java uses **TimSort** for sorting objects.
 
-- Thread Safety
-- Race Condition
-- Synchronization
-- CAS
+TimSort combines:
 
-## Collections
+```text
+Merge Sort
 
-- HashMap
-- Hashtable
-- ConcurrentHashMap
++
 
-## Java Versions
+Insertion Sort
+```
 
-- Java 7 Segments
-- Java 8 Bucket-Level Locking
+Advantages
 
-## Spring Boot Usage
+- Stable sorting
+- Very efficient on partially sorted data
+- O(n log n) worst case
+- O(n) for nearly sorted lists
 
-- Cache
-- Session
-- Metadata
-- Counters
+Primitive arrays (`int[]`, `double[]`) are sorted using a different algorithm (`Dual-Pivot Quicksort`), not TimSort.
+
+---
+
+# Spring Boot Usage
+
+Comparators are used extensively in backend applications.
+
+Examples:
+
+Sorting DTOs
+
+```java
+users.sort(
+    Comparator.comparing(UserDto::getName)
+);
+```
+
+Sorting API responses
+
+```java
+orders.sort(
+    Comparator.comparing(Order::getCreatedAt)
+);
+```
+
+Priority-based scheduling
+
+Leaderboard ranking
+
+Salary reports
+
+Pagination with custom ordering
+
+Database results (when additional in-memory sorting is required)
+
+---
+
+# Best Practices
+
+✅ Prefer `Comparator.comparing()` over manual subtraction for objects.
+
+---
+
+✅ Use `thenComparing()` for multi-field sorting.
+
+---
+
+✅ Keep `compareTo()` consistent with `equals()` whenever possible.
+
+---
+
+✅ Use method references (`Employee::getSalary`) for readability.
+
+---
+
+✅ Avoid arithmetic subtraction (`a - b`) for large integers because of potential overflow; prefer `Integer.compare(a, b)` or `Comparator.comparingInt()`.
+
+---
+
+# Common Mistakes
+
+❌ Returning incorrect values from `compareTo()`.
+
+---
+
+❌ Violating transitivity in comparisons.
+
+---
+
+❌ Modifying objects while sorting.
+
+---
+
+❌ Forgetting that TreeSet uniqueness depends on the comparator.
+
+---
+
+❌ Using subtraction for comparing `long` values.
+
+---
+
+# Interview Questions
+
+### Difference between Comparable and Comparator?
+
+---
+
+### Why is Comparable in `java.lang` but Comparator in `java.util`?
+
+---
+
+### Which is better for multiple sorting conditions?
+
+---
+
+### What happens if compareTo() always returns 0?
+
+---
+
+### Can TreeSet work without Comparable?
+
+**Answer:** Yes, if a Comparator is provided.
+
+---
+
+### Which sorting algorithm does Java use?
+
+**Answer:** TimSort (for object collections).
+
+---
+
+### Difference between natural ordering and custom ordering?
+
+---
+
+### What is a stable sorting algorithm?
+
+---
+
+### Why is TimSort preferred?
+
+---
+
+### Why should compareTo() be consistent with equals()?
+
+---
+
+# Exercises
+
+1. Implement Comparable for Student (sort by marks).
+2. Sort Employee by salary.
+3. Sort Employee by age (descending).
+4. Sort Employee by salary, then age.
+5. Create a TreeSet with reverse ordering.
+6. Sort a list using lambda expressions.
+
+---
+
+# Revision Sheet
+
+## Interfaces
+
+- Comparable
+- Comparator
+
+## Methods
+
+- compareTo()
+- compare()
+
+## Comparator Utilities
+
+- comparing()
+- comparingInt()
+- thenComparing()
+- reversed()
+- naturalOrder()
+- reverseOrder()
+- nullsFirst()
+- nullsLast()
+
+## Algorithms
+
+- TimSort (Objects)
+- Dual-Pivot Quicksort (Primitive Arrays)
 
 ## Interview Focus
 
-- Race Condition
-- Thread Safety
-- CAS
-- Segment vs Bucket Locking
-- HashMap vs Hashtable vs ConcurrentHashMap
+- Comparable vs Comparator
+- Natural vs Custom Ordering
+- TreeSet Ordering
+- TimSort
+- Stable Sorting
+- Java 8 Comparator APIs
+- compareTo() Contract
+- Comparator Best Practices

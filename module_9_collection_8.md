@@ -1,604 +1,414 @@
-# Module 9 - Collections (Part 6)
+# Module 9 - Collections (Part 8)
 
-# Hashtable & ConcurrentHashMap Deep Dive
+# Queue, PriorityQueue & Deque Deep Dive
 
-> **Goal:** Understand why HashMap is not thread-safe, how Hashtable and ConcurrentHashMap solve concurrency problems, and when each should be used in real applications.
+> **Goal:** Master Queue implementations in Java, understand PriorityQueue (Heap), Deque, ArrayDeque, their internal workings, time complexities, interview questions, and real-world Spring Boot usage.
 
 ---
 
 # Table of Contents
 
-1. Why Thread Safety Matters
-2. Why HashMap is Not Thread-Safe
-3. Race Condition
-4. Hashtable
-5. Collections.synchronizedMap()
-6. ConcurrentHashMap
-7. Internal Working (Java 7 vs Java 8)
-8. CAS (Compare-And-Swap)
-9. HashMap vs Hashtable vs ConcurrentHashMap
-10. Spring Boot Usage
-11. Best Practices
-12. Common Mistakes
-13. Interview Questions
-14. Exercises
-15. Revision Sheet
+1. Why Queues?
+2. Queue Interface
+3. Queue Hierarchy
+4. Queue Methods
+5. LinkedList as Queue
+6. PriorityQueue
+7. Internal Working of PriorityQueue
+8. Min Heap vs Max Heap
+9. Time Complexity
+10. Deque Interface
+11. ArrayDeque
+12. Stack vs Queue vs Deque
+13. Internal Working of ArrayDeque
+14. Spring Boot Usage
+15. Best Practices
+16. Common Mistakes
+17. Interview Questions
+18. Exercises
+19. Revision Sheet
 
 ---
 
-# 1. Why Thread Safety Matters
+# 1. Why Queues?
 
-Suppose two threads access the same HashMap.
+Many real-world systems process requests in the order they arrive.
 
-```java
-Map<Integer, String> map = new HashMap<>();
-```
+Examples:
 
-Thread A
-
-```java
-map.put(1, "Alice");
-```
-
-Thread B
-
-```java
-map.put(2, "Bob");
-```
-
-Both threads modify the same data simultaneously.
-
-Without proper synchronization, the map can become inconsistent.
-
----
-
-# What is a Race Condition?
-
-A race condition occurs when:
-
-- Multiple threads access shared data.
-- At least one thread modifies it.
-- The final result depends on the timing of execution.
-
-Example:
-
-```java
-count = 0;
-```
-
-Thread A
-
-```java
-count++;
-```
-
-Thread B
-
-```java
-count++;
-```
-
-Expected:
-
-```text
-2
-```
-
-Possible result:
-
-```text
-1
-```
-
-because both threads read the old value before either writes the new one.
-
----
-
-# 2. Why HashMap is Not Thread-Safe
-
-HashMap performs no synchronization.
-
-Example:
-
-```java
-Map<Integer,String> map = new HashMap<>();
-```
-
-Multiple threads can execute:
-
-```java
-put()
-
-remove()
-
-resize()
-```
-
-at the same time.
-
-Possible issues:
-
-- Lost updates
-- Corrupted internal structure
-- Infinite loops (older JDKs during resize)
-- Incorrect reads
-
----
-
-# Example
-
-```java
-Thread 1
-
-map.put(1, "A");
-
-Thread 2
-
-map.put(2, "B");
-```
-
-Both threads may try to modify the same bucket simultaneously.
-
-Result is unpredictable.
-
----
-
-# 3. Hashtable
-
-Before ConcurrentHashMap, Java provided:
-
-```java
-Hashtable<K,V>
-```
-
-Characteristics:
-
-- Thread-safe
-- Synchronized
-- Slower
-- Legacy class
-- Does not allow null keys or null values
+- Printer Queue
+- CPU Scheduling
+- Ticket Booking
+- Order Processing
+- Message Queues (Kafka, RabbitMQ)
+- Web Server Request Queue
 
 Example
 
-```java
-Map<Integer,String> table =
-        new Hashtable<>();
+```text
+Request 1
+
+↓
+
+Request 2
+
+↓
+
+Request 3
+
+↓
+
+Processed in same order
 ```
 
----
-
-# How Hashtable Achieves Thread Safety
-
-Every public method is synchronized.
-
-Example (simplified):
-
-```java
-public synchronized V put(K key, V value) {
-
-    ...
-
-}
-```
-
-Only one thread can execute `put()` on the same Hashtable instance at a time.
-
----
-
-# Problem with Hashtable
-
-Suppose:
-
-10 threads
-
-perform
+This follows:
 
 ```text
-get()
+FIFO
+
+First In First Out
 ```
-
-Only one thread proceeds.
-
-The other nine wait.
-
-Even reads block each other.
-
-This creates unnecessary contention and poor scalability.
 
 ---
 
-# 4. Collections.synchronizedMap()
+# 2. Queue Interface
 
-Java also provides a synchronized wrapper.
+Package
 
 ```java
-Map<Integer,String> map =
-    Collections.synchronizedMap(new HashMap<>());
+java.util.Queue
 ```
 
-Internally, every operation acquires a single lock.
+Queue extends
 
-Advantages:
+```text
+Collection
 
-- Easy to create
-- Thread-safe
+↓
 
-Disadvantages:
+Queue
+```
 
-- Same bottleneck as Hashtable
-- One global lock
+It represents a collection where elements are generally processed in FIFO order.
 
 ---
 
-# 5. ConcurrentHashMap
+# Queue Hierarchy
 
-Introduced to solve Hashtable's performance problem.
+```text
+Collection
 
-Example
+↓
+
+Queue
+
+├── LinkedList
+
+├── PriorityQueue
+
+└── Deque
+
+      ├── ArrayDeque
+
+      └── LinkedList
+```
+
+---
+
+# 3. Queue Methods
+
+| Method | Description |
+|---------|-------------|
+| add() | Insert element |
+| offer() | Insert safely |
+| remove() | Remove head |
+| poll() | Remove safely |
+| element() | View head |
+| peek() | View safely |
+
+---
+
+## add()
 
 ```java
-Map<Integer,String> map =
-        new ConcurrentHashMap<>();
+Queue<Integer> queue =
+        new LinkedList<>();
+
+queue.add(10);
+queue.add(20);
+queue.add(30);
 ```
 
-Characteristics:
+Queue
 
-- Thread-safe
-- High performance
-- Better concurrency
-- No global lock
-- Does not allow null keys or null values
+```text
+10
+
+20
+
+30
+```
 
 ---
 
-# Why is ConcurrentHashMap Faster?
+## offer()
 
-Instead of locking the whole map:
-
-```text
-Hashtable
-
-Entire Map Locked
+```java
+queue.offer(40);
 ```
 
-ConcurrentHashMap locks only the required portion during updates.
+Difference
 
-Multiple threads can operate on different buckets simultaneously.
+```text
+add()
+
+↓
+
+Throws Exception
+
+if insertion fails
+```
+
+```text
+offer()
+
+↓
+
+Returns false
+
+if insertion fails
+```
+
+Preferred for bounded queues.
 
 ---
 
-# Java 7 Internal Working
+## remove()
 
-Java 7 used:
-
-```text
-Segments
+```java
+queue.remove();
 ```
 
-Example:
-
-```text
-Map
-
-↓
-
-Segment 1
-
-Segment 2
-
-Segment 3
-
-Segment 4
-```
-
-Each segment had its own lock.
-
-Two threads could update different segments concurrently.
-
----
-
-# Java 8 Improvement
-
-Segments were removed.
-
-Now locking happens at the bucket (bin) level.
-
-Conceptually:
-
-```text
-Bucket 0
-
-Bucket 1
-
-Bucket 2
-
-Bucket 3
-```
-
-If Thread A updates Bucket 1 and Thread B updates Bucket 3, they can proceed simultaneously.
-
-This greatly improves throughput.
-
----
-
-# 6. CAS (Compare-And-Swap)
-
-ConcurrentHashMap also uses a lock-free technique called CAS.
-
-CAS is an atomic CPU operation.
-
-Idea:
-
-```text
-Current Value == Expected Value?
-
-↓
-
-Yes
-
-↓
-
-Update
-
-↓
-
-No
-
-↓
-
-Retry
-```
-
-This avoids locking for many operations.
-
-Java implements CAS using classes from `java.util.concurrent.atomic` and low-level JVM support.
-
----
-
-# Example (Conceptual)
-
-Current value:
+Removes
 
 ```text
 10
 ```
 
-Thread wants to change it to:
+Queue becomes
 
 ```text
 20
+
+30
 ```
 
-CAS checks:
+If queue is empty
 
 ```text
-Is current value still 10?
+NoSuchElementException
+```
+
+---
+
+## poll()
+
+```java
+queue.poll();
+```
+
+Removes head.
+
+If queue is empty
+
+```text
+null
+```
+
+instead of throwing an exception.
+
+---
+
+## element()
+
+```java
+queue.element();
+```
+
+Returns
+
+```text
+Head Element
+```
+
+Does not remove it.
+
+Throws exception if queue is empty.
+
+---
+
+## peek()
+
+```java
+queue.peek();
+```
+
+Returns head.
+
+Returns
+
+```text
+null
+```
+
+if empty.
+
+---
+
+# remove() vs poll()
+
+| remove() | poll() |
+|-----------|---------|
+| Removes head | Removes head |
+| Throws exception if empty | Returns null |
+| Less safe | Preferred |
+
+---
+
+# element() vs peek()
+
+| element() | peek() |
+|------------|---------|
+| Returns head | Returns head |
+| Throws exception | Returns null |
+| Less safe | Preferred |
+
+---
+
+# 4. LinkedList as Queue
+
+LinkedList implements
+
+```text
+List
+
+Queue
+
+Deque
+```
+
+Example
+
+```java
+Queue<String> queue =
+        new LinkedList<>();
+
+queue.offer("A");
+queue.offer("B");
+queue.offer("C");
+
+System.out.println(queue.poll());
+```
+
+Output
+
+```text
+A
+```
+
+---
+
+# Internal Structure
+
+```text
+Head
 
 ↓
 
-Yes
+A
+
+⇄
+
+B
+
+⇄
+
+C
 
 ↓
 
-Update to 20
+Tail
 ```
 
-If another thread already changed it:
+Insertion at tail
+
+Removal from head
+
+Both are
 
 ```text
-Retry
+O(1)
 ```
 
 ---
 
-# Read Operations
+# 5. PriorityQueue
 
-One of the biggest advantages:
+Unlike Queue,
 
-Reads usually do **not** block.
+PriorityQueue does NOT follow insertion order.
 
-Multiple threads can execute:
-
-```java
-map.get(key);
-```
-
-simultaneously.
-
-This is why ConcurrentHashMap performs much better in read-heavy applications.
-
----
-
-# Null Handling
-
-HashMap
-
-```java
-map.put(null, "A");
-```
-
-Allowed.
-
-ConcurrentHashMap
-
-```java
-map.put(null, "A");
-```
-
-Throws:
+It follows
 
 ```text
-NullPointerException
+Priority
 ```
 
-Reason:
-
-`null` would make it ambiguous whether a missing value or an actual `null` value was returned during concurrent access.
-
----
-
-# 7. Comparison
-
-| Feature | HashMap | Hashtable | ConcurrentHashMap |
-|----------|----------|------------|-------------------|
-| Thread Safe | ❌ | ✅ | ✅ |
-| Null Key | ✅ One | ❌ | ❌ |
-| Null Value | ✅ Multiple | ❌ | ❌ |
-| Synchronization | None | Entire Map | Bucket/CAS |
-| Performance | Fast | Slow | Fast |
-| Recommended Today | Yes (single-threaded) | No | Yes (multi-threaded) |
-
----
-
-# 8. Spring Boot Usage
-
-ConcurrentHashMap is commonly used for:
-
-In-memory caches
+Default
 
 ```java
-Map<Long, User> cache =
-    new ConcurrentHashMap<>();
+PriorityQueue<Integer> pq =
+        new PriorityQueue<>();
 ```
 
-Session storage
+Example
 
-Feature flags
+```java
+pq.add(30);
 
-Application metadata
+pq.add(10);
 
-Rate limit counters
+pq.add(20);
+```
 
-Request tracking
+Removing
 
-Background job status
+```java
+System.out.println(pq.poll());
+```
 
-HashMap is typically fine for request-scoped objects that are not shared across threads.
+Output
 
----
+```text
+10
+```
 
-# 9. Best Practices
+Even though
 
-✅ Use HashMap in single-threaded scenarios.
+```text
+30
 
----
-
-✅ Use ConcurrentHashMap for shared mutable state.
-
----
-
-✅ Avoid Hashtable in new applications.
-
----
-
-✅ Avoid locking the whole map unless absolutely necessary.
+was inserted first.
+```
 
 ---
 
-# 10. Common Mistakes
+# Why?
 
-❌ Assuming HashMap is thread-safe.
+PriorityQueue internally uses
 
----
+```text
+Binary Heap
+```
 
-❌ Using Hashtable in modern applications without a specific reason.
-
----
-
-❌ Expecting ConcurrentHashMap to allow null keys.
-
----
-
-❌ Iterating over a HashMap while another thread modifies it.
-
----
-
-# 11. Interview Questions
-
-### Why is HashMap not thread-safe?
-
----
-
-### What is a race condition?
-
----
-
-### Difference between Hashtable and HashMap?
-
----
-
-### Difference between Hashtable and ConcurrentHashMap?
-
----
-
-### Why is ConcurrentHashMap faster?
-
----
-
-### What was the Segment architecture in Java 7?
-
----
-
-### What changed in Java 8?
-
----
-
-### What is CAS?
-
----
-
-### Why doesn't ConcurrentHashMap allow null?
-
----
-
-### Can multiple threads call get() simultaneously?
-
-**Answer:** Yes, in most cases they can.
-
----
-
-# 12. Exercises
-
-1. Compare HashMap and Hashtable.
-2. Explain a race condition with an example.
-3. Compare Hashtable and ConcurrentHashMap.
-4. Explain CAS in simple words.
-5. Describe how Java 8 improved ConcurrentHashMap.
-
----
-
-# 13. Revision Sheet
-
-## Core Concepts
-
-- Thread Safety
-- Race Condition
-- Synchronization
-- CAS
-
-## Collections
-
-- HashMap
-- Hashtable
-- ConcurrentHashMap
-
-## Java Versions
-
-- Java 7 Segments
-- Java 8 Bucket-Level Locking
-
-## Spring Boot Usage
-
-- Cache
-- Session
-- Metadata
-- Counters
-
-## Interview Focus
-
-- Race Condition
-- Thread Safety
-- CAS
-- Segment vs Bucket Locking
-- HashMap vs Hashtable vs ConcurrentHashMap
+Not LinkedList.
